@@ -7,11 +7,18 @@ export async function POST(req: Request) {
     const apiKey = rawApiKey.replace(/[^\x00-\x7F]/g, '').trim();
 
     if (!apiKey) {
-      return NextResponse.json({ error: 'Vercel panelinde GEMINI_API_KEY bulunamadı.' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Vercel panelinde GEMINI_API_KEY bulunamadı.' },
+        { status: 500 }
+      );
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const { imageBase64, mimeType } = await req.json();
+
+    if (!imageBase64 || !mimeType) {
+      return NextResponse.json({ error: 'Görsel yüklenmedi.' }, { status: 400 });
+    }
 
     const model = genAI.getGenerativeModel({
       model: 'gemini-1.5-flash',
@@ -33,8 +40,13 @@ export async function POST(req: Request) {
       { inlineData: { data: cleanBase64, mimeType: mimeType } },
     ]);
 
-    return NextResponse.json(JSON.parse(result.response.text()));
+    const responseText = result.response.text();
+    return NextResponse.json(JSON.parse(responseText));
   } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'API Hatası' }, { status: 500 });
+    console.error('API Hatası:', error);
+    return NextResponse.json(
+      { error: error?.message || 'Gemini API bağlantı hatası.' },
+      { status: 500 }
+    );
   }
 }
