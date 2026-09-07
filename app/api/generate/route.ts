@@ -7,7 +7,7 @@ export async function POST(req: Request) {
     const apiKey = rawApiKey.replace(/[^\x00-\x7F]/g, '').trim();
 
     if (!apiKey) {
-      return NextResponse.json({ error: 'GEMINI_API_KEY bulunamadı.' }, { status: 500 });
+      return NextResponse.json({ error: 'Vercel panelinde GEMINI_API_KEY bulunamadı.' }, { status: 500 });
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
