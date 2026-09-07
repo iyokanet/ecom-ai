@@ -13,56 +13,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Update Route API File
-        uses: Actions-R-Us/create-file-action@v2
-        with:
-          file: 'app/api/generate/route.ts'
-          content: |
-            import { GoogleGenerativeAI } from '@google/generative-ai';
-            import { NextResponse } from 'next/server';
-
-            export async function POST(req: Request) {
-              try {
-                const rawApiKey = process.env.GEMINI_API_KEY || '';
-                const apiKey = rawApiKey.replace(/[^\x00-\x7F]/g, '').trim();
-
-                if (!apiKey) {
-                  return NextResponse.json({ error: 'GEMINI_API_KEY bulunamadı.' }, { status: 500 });
-                }
-
-                const genAI = new GoogleGenerativeAI(apiKey);
-                const { imageBase64, mimeType } = await req.json();
-
-                const model = genAI.getGenerativeModel({
-                  model: 'gemini-1.5-flash',
-                  generationConfig: { responseMimeType: 'application/json' },
-                });
-
-                const prompt = `
-                  Sen e-ticaret uzmanısın. Görseldeki ürünü analiz et ve strictly JSON yanıtı ver:
-                  {
-                    "title": "SEO Uyumlu Ürün Başlığı",
-                    "description": "• Maddeli Pazarlama Açıklaması"
-                  }
-                `;
-
-                const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-
-                const result = await model.generateContent([
-                  prompt,
-                  { inlineData: { data: cleanBase64, mimeType: mimeType } },
-                ]);
-
-                return NextResponse.json(JSON.parse(result.response.text()));
-              } catch (error: any) {
-                return NextResponse.json({ error: error?.message || 'API Hatası' }, { status: 500 });
-              }
-            }
+      - name: Create API File
+        run: |
+          mkdir -p app/api/generate
+          printf 'import { GoogleGenerativeAI } from '\''@google/generative-ai'\'';\nimport { NextResponse } from '\''next/server'\'';\n\nexport async function POST(req: Request) {\n  try {\n    const rawApiKey = process.env.GEMINI_API_KEY || '\'''\'';\n    const apiKey = rawApiKey.replace(/[^\\x00-\\x7F]/g, '\'''\'').trim();\n\n    if (!apiKey) {\n      return NextResponse.json({ error: '\''GEMINI_API_KEY bulunamadı.'\'' }, { status: 500 });\n    }\n\n    const genAI = new GoogleGenerativeAI(apiKey);\n    const { imageBase64, mimeType } = await req.json();\n\n    const model = genAI.getGenerativeModel({\n      model: '\''gemini-1.5-flash'\'',\n      generationConfig: { responseMimeType: '\''application/json'\'' },\n    });\n\n    const prompt = `\n      Sen e-ticaret uzmanısın. Görseldeki ürünü analiz et ve strictly JSON yanıtı ver:\n      {\n        "title": "SEO Uyumlu Ürün Başlığı",\n        "description": "• Maddeli Pazarlama Açıklaması"\n      }\n    `;\n\n    const cleanBase64 = imageBase64.replace(/^data:image\\/\\w+;base64,/, '\'''\'');\n\n    const result = await model.generateContent([\n      prompt,\n      { inlineData: { data: cleanBase64, mimeType: mimeType } },\n    ]);\n\n    return NextResponse.json(JSON.parse(result.response.text()));\n  } catch (error: any) {\n    return NextResponse.json({ error: error?.message || '\''API Hatası'\'' }, { status: 500 });\n  }\n}\n' > app/api/generate/route.ts
 
       - name: Commit and Push Changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Auto updated code via Workflow" || exit 0
+          git commit -m "Auto updated route.ts" || exit 0
           git push
