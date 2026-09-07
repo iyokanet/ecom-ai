@@ -16,16 +16,155 @@ jobs:
       - name: Update API Route
         run: |
           mkdir -p app/api/generate
-          printf 'import { GoogleGenerativeAI } from '\''@google/generative-ai'\'';\nimport { NextResponse } from '\''next/server'\'';\n\nexport async function POST(req: Request) {\n  try {\n    const rawApiKey = process.env.GEMINI_API_KEY || '\'''\'';\n    const apiKey = rawApiKey.replace(/[^\\x00-\\x7F]/g, '\'''\'').trim();\n\n    if (!apiKey) {\n      return NextResponse.json({ error: '\''Vercel panelinde GEMINI_API_KEY bulunamadı.'\'' }, { status: 500 });\n    }\n\n    const genAI = new GoogleGenerativeAI(apiKey);\n    const { imageBase64, mimeType } = await req.json();\n\n    const model = genAI.getGenerativeModel({\n      model: '\''gemini-1.5-flash'\'',\n      generationConfig: { responseMimeType: '\''application/json'\'' },\n    });\n\n    const prompt = `\n      Sen e-ticaret uzmanısın. Görseldeki ürünü analiz et ve strictly JSON yanıtı ver:\n      {\n        "title": "SEO Uyumlu Ürün Başlığı",\n        "description": "• Maddeli Pazarlama Açıklaması"\n      }\n    `;\n\n    const cleanBase64 = imageBase64.replace(/^data:image\\/\\w+;base64,/, '\'''\'');\n\n    const result = await model.generateContent([\n      prompt,\n      { inlineData: { data: cleanBase64, mimeType: mimeType } },\n    ]);\n\n    return NextResponse.json(JSON.parse(result.response.text()));\n  } catch (error: any) {\n    return NextResponse.json({ error: error?.message || '\''API Hatası'\'' }, { status: 500 });\n  }\n}\n' > app/api/generate/route.ts
+          cat << 'EOF' > app/api/generate/route.ts
+          import { GoogleGenerativeAI } from '@google/generative-ai';
+          import { NextResponse } from 'next/server';
+
+          export async function POST(req: Request) {
+            try {
+              const rawApiKey = process.env.GEMINI_API_KEY || '';
+              const apiKey = rawApiKey.replace(/[^\x00-\x7F]/g, '').trim();
+
+              if (!apiKey) {
+                return NextResponse.json(
+                  { error: 'Vercel panelinde GEMINI_API_KEY bulunamadı.' },
+                  { status: 500 }
+                );
+              }
+
+              const genAI = new GoogleGenerativeAI(apiKey);
+              const { imageBase64, mimeType } = await req.json();
+
+              if (!imageBase64 || !mimeType) {
+                return NextResponse.json({ error: 'Görsel yüklenmedi.' }, { status: 400 });
+              }
+
+              const model = genAI.getGenerativeModel({
+                model: 'gemini-1.5-flash',
+                generationConfig: { responseMimeType: 'application/json' },
+              });
+
+              const prompt = `
+                Sen e-ticaret uzmanısın. Görseldeki ürünü analiz et ve strictly JSON yanıtı ver:
+                {
+                  "title": "SEO Uyumlu Ürün Başlığı",
+                  "description": "• Maddeli Pazarlama Açıklaması"
+                }
+              `;
+
+              const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+
+              const result = await model.generateContent([
+                prompt,
+                { inlineData: { data: cleanBase64, mimeType: mimeType } },
+              ]);
+
+              const responseText = result.response.text();
+              return NextResponse.json(JSON.parse(responseText));
+            } catch (error: any) {
+              console.error('API Hatası:', error);
+              return NextResponse.json(
+                { error: error?.message || 'Gemini API bağlantı hatası.' },
+                { status: 500 }
+              );
+            }
+          }
+          EOF
 
       - name: Update Frontend UI
         run: |
-          printf '\x27use client\x27;\n\nimport { useState } from \x27react\x27;\n\nexport default function Home() {\n  const [preview, setPreview] = useState<string | null>(null);\n  const [mimeType, setMimeType] = useState<string>(\x27\x27);\n  const [loading, setLoading] = useState(false);\n  const [result, setResult] = useState<{ title: string; description: string } | null>(null);\n\n  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {\n    const file = e.target.files?.[0];\n    if (file) {\n      setMimeType(file.type);\n      const reader = new FileReader();\n      reader.onloadend = () => setPreview(reader.result as string);\n      reader.readAsDataURL(file);\n    }\n  };\n\n  const handleGenerate = async () => {\n    if (!preview) return;\n    setLoading(true);\n    setResult(null);\n\n    try {\n      const res = await fetch(\x27/api/generate\x27, {\n        method: \x27POST\x27,\n        headers: { \x27Content-Type\x27: \x27application/json\x27 },\n        body: JSON.stringify({ imageBase64: preview, mimeType }),\n      });\n\n      const data = await res.json();\n      if (!res.ok || data.error) throw new Error(data.error || \x27Sunucu Hatası\x27);\n      setResult(data);\n    } catch (err: any) {\n      alert(\x27Sistem Uyarısı: \x27 + err.message);\n    } finally {\n      setLoading(false);\n    }\n  };\n\n  return (\n    <main className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center font-sans">\n      <div className="max-w-xl w-full bg-white rounded-xl shadow-lg p-6 space-y-6">\n        <h1 className="text-2xl font-bold text-gray-800 text-center">E-Ticaret AI Metin Dönüştürücü</h1>\n        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-500 transition">\n          <input type="file" accept="image/*" onChange={handleImageChange} className="mb-4 block w-full text-sm text-slate-500" />\n          {preview && <img src={preview} alt="Önizleme" className="max-h-48 mx-auto rounded-lg shadow" />}\n        </div>\n        <button onClick={handleGenerate} disabled={!preview || loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-semibold disabled:opacity-50 transition">\n          {loading ? \x27AI Görseli Analiz Ediyor...\x27 : \x27AI Başlık ve Açıklama Üret\x27}\n        </button>\n        {result && (\n          <div className="bg-slate-50 p-4 rounded-lg space-y-4 border border-slate-200">\n            <div>\n              <h3 className="text-xs font-bold text-gray-400 uppercase">Önerilen Başlık</h3>\n              <p className="text-base font-semibold text-gray-800">{result.title}</p>\n            </div>\n            <div>\n              <h3 className="text-xs font-bold text-gray-400 uppercase">Pazarlama Açıklaması</h3>\n              <p className="text-gray-700 whitespace-pre-line text-sm">{result.description}</p>\n            </div>\n          </div>\n        )}\n      </div>\n    </main>\n  );\n}\n' > app/page.tsx
+          cat << 'EOF' > app/page.tsx
+          'use client';
+
+          import { useState } from 'react';
+
+          export default function Home() {
+            const [preview, setPreview] = useState<string | null>(null);
+            const [mimeType, setMimeType] = useState<string>('');
+            const [loading, setLoading] = useState(false);
+            const [result, setResult] = useState<{ title: string; description: string } | null>(null);
+
+            const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                setMimeType(file.type);
+                const reader = new FileReader();
+                reader.onloadend = () => setPreview(reader.result as string);
+                reader.readAsDataURL(file);
+              }
+            };
+
+            const handleGenerate = async () => {
+              if (!preview) return;
+              setLoading(true);
+              setResult(null);
+
+              try {
+                const res = await fetch('/api/generate', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ imageBase64: preview, mimeType }),
+                });
+
+                const data = await res.json();
+
+                if (!res.ok || data.error) {
+                  throw new Error(data.error || 'Sunucu hatası oluştu.');
+                }
+
+                setResult(data);
+              } catch (err: any) {
+                alert('Sistem Hatası: ' + err.message);
+              } finally {
+                setLoading(false);
+              }
+            };
+
+            return (
+              <main className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center font-sans">
+                <div className="max-w-xl w-full bg-white rounded-xl shadow-lg p-6 space-y-6">
+                  <h1 className="text-2xl font-bold text-gray-800 text-center">E-Ticaret AI Metin Dönüştürücü</h1>
+
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-500 transition">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="mb-4 block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                    />
+                    {preview && <img src={preview} alt="Önizleme" className="max-h-48 mx-auto rounded-lg shadow" />}
+                  </div>
+
+                  <button
+                    onClick={handleGenerate}
+                    disabled={!preview || loading}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-semibold disabled:opacity-50 transition"
+                  >
+                    {loading ? 'AI Görseli Analiz Ediyor...' : 'AI Başlık ve Açıklama Üret'}
+                  </button>
+
+                  {result && (
+                    <div className="bg-slate-50 p-4 rounded-lg space-y-4 border border-slate-200">
+                      <div>
+                        <h3 className="text-xs font-bold text-gray-400 uppercase">Önerilen Başlık</h3>
+                        <p className="text-base font-semibold text-gray-800">{result.title}</p>
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-bold text-gray-400 uppercase">Pazarlama Açıklaması</h3>
+                        <p className="text-gray-700 whitespace-pre-line text-sm">{result.description}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </main>
+            );
+          }
+          EOF
 
       - name: Commit and Push Changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Auto update frontend and backend" || exit 0
+          git commit -m "Fix frontend hydration and backend API logic" || exit 0
           git push
